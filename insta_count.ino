@@ -113,12 +113,12 @@ void ask_api() {
   
   Serial.print("[HTTPS] begin...\n");
   http.begin(url, INSTAGRAM_FINGERPRINT); //HTTPS
-  digitalWrite(interruptPin, HIGH);
+  
   Serial.print("[HTTPS] GET " + url + " ...\n");
   
   // start connection and send HTTP header
   int httpCode = http.GET();
-  
+  digitalWrite(interruptPin, HIGH);
   digitalWrite(interruptPin, LOW);
   // httpCode will be negative on error
   if (httpCode > 0) {
