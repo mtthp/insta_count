@@ -72,7 +72,8 @@ void setup() {
   display.setBrightness(0x0a); //set the diplay to maximum brightness
   display.setSegments(SEG_boot);
 
-  wifiManager.autoConnect(WIFI_SSID, WIFI_PASSWORD); // optionnal parameters
+  wifiManager.setAPCallback(configModeCallback);
+  wifiManager.autoConnect("InstaCount"); // AP-Name in case of not finding previous WiFi network
 
   //if you get here you have connected to the WiFi
   Serial.println("[WiFi] Connected !");
@@ -228,6 +229,21 @@ void ask_user_profile(){
   }
 
   http.end();
+}
+
+// waiting for WiFi configuration
+const uint8_t SEG_conf[] = {
+  SEG_D | SEG_E | SEG_G,                          // c
+  SEG_C | SEG_D | SEG_E | SEG_G,                  // o
+  SEG_C | SEG_E | SEG_G,                          // n
+  SEG_A | SEG_E | SEG_F | SEG_G,                  // f
+};
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  display.setSegments(SEG_conf);
+
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
 void loading(){
