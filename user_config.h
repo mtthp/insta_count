@@ -5,10 +5,6 @@
  * @date 05/05/2017
  */
 
-//------- Replace the following! ------
-#define WIFI_SSID "your wifi network name"; // your network SSID (name)
-#define WIFI_PASSWORD "yourwifipassword";   // your network password
-
 // Instagram Fingerprint (to use HTTPS)
 #define INSTAGRAM_FINGERPRINT "5E:30:4C:7A:C6:91:69:CF:E0:05:79:5F:26:4D:80:C7:BF:F5:F5:4D"
 
