@@ -13,9 +13,6 @@
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library
-#include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
-#include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 #include <TM1637Display.h>        //https://github.com/avishorp/TM1637 TM1637 (LED Driver)
 
 // user configuration file
@@ -56,12 +53,16 @@ const uint8_t SEG_Err[] = {
 };
 
 HTTPClient http;
-WiFiManager wifiManager;
 
 TM1637Display display(CLK, DIO); //set up the 4-Digit Display
 
-unsigned long api_call_delay = 60000; // delay in milliseconds between each api call 
-unsigned long api_call_time;   // last time api request has been done
+WiFiClient wifiClient;
+PubSubClient mqttClient(MQTT_SERVER, MQTT_PORT, wifiClient);
+
+DHT dht(DHTPIN, DHTTYPE);
+
+unsigned long apiCallDelay = REPORT_INTERVAL * 1000; // delay in milliseconds between each api call 
+unsigned long apiCallTime;   // last time api request has been done
 
 const byte interruptPin = 0; // used to start the loading function
 
@@ -106,11 +107,12 @@ void ask_api() {
   // Inside the brackets, 200 is the size of the pool in bytes,
   // If the JSON object is more complex, you need to increase that value.
   StaticJsonBuffer<500> jsonBuffer;
+
   String url = "https://api.instagram.com/v1/users/";
   url.concat(USER_ID);
   url.concat("?access_token=");
   url.concat(API_ACCESS_TOKEN);
-  
+
   Serial.print("[HTTPS] begin...\n");
   http.begin(url, INSTAGRAM_FINGERPRINT); //HTTPS
   
