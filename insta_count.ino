@@ -15,6 +15,10 @@
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library
 #include <TM1637Display.h>        //https://github.com/avishorp/TM1637 TM1637 (LED Driver)
 
+#include <PubSubClient.h>         //MQTT support
+#include <DHT.h>                  //to get Temperature and Humidity values from DHT22 sensor
+#include <DHT_U.h>
+
 // user configuration file
 #include "user_config.h"
 
@@ -73,31 +77,55 @@ void setup() {
   display.setBrightness(0x0a); //set the diplay to maximum brightness
   display.setSegments(SEG_boot);
 
-  wifiManager.setAPCallback(configModeCallback);
-  wifiManager.autoConnect("InstaCount"); // AP-Name in case of not finding previous WiFi network
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print("...");
+    loading();
+  }
+  Serial.println();
 
   //if you get here you have connected to the WiFi
   Serial.println("[WiFi] Connected !");
   display.setSegments(SEG_conn);
+  delay(1000);
+
+  while (!mqttClient.connected()) {
+    Serial.printf("[MQTT] Attempting MQTT connection to %s...\n", MQTT_SERVER);
+    // Attempt to connect
+    // If you do not want to use a username and password, change next line to
+    // if (mqttClient.connect("ESP8266Client")) {
+    if (mqttClient.connect("ESP8266Client", MQTT_USER, MQTT_PASSWORD)) {
+      Serial.println("[MQTT] Connected !");
+    } else {
+      Serial.print("[MQTT] failed, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
 
   // attach the loading function when starting HTTP calls
   pinMode(interruptPin, OUTPUT);
   attachInterrupt(interruptPin, loading, RISING);  
 
-  ask_api();
+  act();
 }
 
 void loop() {
-  if (millis() > api_call_time + api_call_delay)  {
-    api_call_time = millis();
+  if (millis() > apiCallTime + apiCallDelay)  {
+    apiCallTime = millis();
 
-    /* Disclaimer :
-     * we could use this url (https://www.instagram.com/{username}/?__a=1) but then the StaticJsonBuffer 
-     * would be too large to be handled by the Wemos D1 Mini, so we ask the API instead
-     * If you have a device with enough memory, you can try the ask_user_profile() method instead
-     */
-    ask_api();
+    act();
   }
+}
+
+void act(){
+  ask_api();
+  readDHT();
 }
 
 
@@ -125,7 +153,7 @@ void ask_api() {
   // httpCode will be negative on error
   if (httpCode > 0) {
     // HTTP header has been send and Server response header has been handled
-    Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+    Serial.printf("[HTTPS] GET... code : %d\n", httpCode);
 
     // file found at server
     if(httpCode == HTTP_CODE_OK) {
@@ -134,9 +162,7 @@ void ask_api() {
       char json[size];
       result.toCharArray(json, size);
 
-      Serial.println("---------Data received---------");
-      Serial.println(json);
-      Serial.println("-------------------------------");
+      Serial.printf("[HTTPS] GET... result :  %s\n", json);
       // Root of the object tree.
       //
       // It's a reference to the JsonObject, the actual bytes are inside the
@@ -146,12 +172,11 @@ void ask_api() {
 
       // Test if parsing succeeds.
       if (!root.success()) {
-        Serial.println("parseObject() failed, probably because the json buffer isnt enough");
+        Serial.println("[ArduinoJSON] parseObject() failed, probably because the json buffer isnt enough");
         display.setSegments(SEG_Err);
       } else {
         long followed_by = root["data"]["counts"]["followed_by"];
-        Serial.print("Number of followers is : ");
-        Serial.println(followed_by);
+        Serial.printf("[Instagram] Number of followers is : %d\n", followed_by);
 
         float followed_by_float = followed_by / 10.0; // rounding decimal
         display.showNumberDecEx(followed_by_float, 0x80 >> 1); //Display the numCounter value;
@@ -169,83 +194,36 @@ void ask_api() {
   http.end();
 }
 
-
-void ask_user_profile(){
+void readDHT(){
   // Memory pool for JSON object tree.
   //
   // Inside the brackets, 200 is the size of the pool in bytes,
   // If the JSON object is more complex, you need to increase that value.
-  StaticJsonBuffer<20000> jsonBuffer;
-  String url = "https://www.instagram.com/";
-  url.concat(USER_NAME);
-  url.concat("/?__a=1");
+  StaticJsonBuffer<500> jsonBuffer;
+  
+  // Wait a few seconds between measurements.
+  delay(2000);
 
-  Serial.print("[HTTPS] begin...\n");
-  http.begin(url, INSTAGRAM_FINGERPRINT); //HTTPS
-  digitalWrite(interruptPin, HIGH);
-  Serial.print("[HTTPS] GET " + url + " ...\n");
-  // start connection and send HTTP header
-  int httpCode = http.GET();
-  digitalWrite(interruptPin, LOW);
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
 
-  // httpCode will be negative on error
-  if(httpCode > 0) {
-    // HTTP header has been send and Server response header has been handled
-    Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
-
-    // file found at server
-    if(httpCode == HTTP_CODE_OK) {
-      String result = http.getString();
-      int size = result.length() + 1;
-      char json[size];
-      result.toCharArray(json, size);
-
-      Serial.println("---------Data received---------");
-      Serial.println(json);
-      Serial.println("-------------------------------");
-      // Root of the object tree.
-      //
-      // It's a reference to the JsonObject, the actual bytes are inside the
-      // JsonBuffer with all the other nodes of the object tree.
-      // Memory is freed when jsonBuffer goes out of scope.
-      JsonObject& root = jsonBuffer.parseObject(json);
-
-      // Test if parsing succeeds.
-      if (!root.success()) {
-        Serial.println("parseObject() failed, probably because the json buffer isnt enough");
-      } else {
-        long followed_by = root["user"]["followed_by"]["count"];
-        Serial.print("Number of followers is : ");
-        Serial.println(followed_by);
-
-        float followed_by_float = followed_by / 10.0; // rounding decimal
-        display.showNumberDecEx(followed_by_float, 0x80 >> 1); //Display the numCounter value;
-      }
-    } else {
-      Serial.printf("[HTTPS] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-      display.setSegments(SEG_Err);
-    }
-  } else {
-    Serial.printf("[HTTPS] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-    display.setSegments(SEG_Err);
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t)) {
+    Serial.println("[DHT22] Failed to read from DHT sensor!");
+    return;
   }
 
-  http.end();
-}
+  JsonObject& jsonValues = jsonBuffer.createObject();
+  jsonValues["Humidity"] = h;
+  jsonValues["Temperature"] = t;
 
-// waiting for WiFi configuration
-const uint8_t SEG_conf[] = {
-  SEG_D | SEG_E | SEG_G,                          // c
-  SEG_C | SEG_D | SEG_E | SEG_G,                  // o
-  SEG_C | SEG_E | SEG_G,                          // n
-  SEG_A | SEG_E | SEG_F | SEG_G,                  // f
-};
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  display.setSegments(SEG_conf);
-
-  Serial.println(WiFi.softAPIP());
-  Serial.println(myWiFiManager->getConfigPortalSSID());
+  char charBuffer[50];
+  jsonValues.printTo(charBuffer, sizeof(charBuffer));
+  mqttClient.publish(MQTT_TOPIC, charBuffer);
+  Serial.printf("[MQTT] Sending to topic %s : %s\n", MQTT_TOPIC, charBuffer);
 }
 
 void loading(){
