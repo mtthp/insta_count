@@ -16,5 +16,20 @@
 // find yours: https://www.instagram.com/{username}/?__a=1
 #define USER_ID "your_user_id_here"
 
-// Instagram User Name
-#define USER_NAME "your_user_name_here"
+// WiFi parameters
+#define WIFI_SSID     "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+
+// MQTT parameters
+#define MQTT_SERVER   "your_mqtt_host"
+#define MQTT_PORT     1883
+#define MQTT_USER     "your_mqtt_user"
+#define MQTT_PASSWORD "your_mqtt_password"
+#define MQTT_TOPIC    "your_topic/SENSOR"
+
+// DHT parameters (temperature + humidity sensor)
+#define DHTPIN D4
+#define DHTTYPE DHT22
+
+// number of seconds between each call
+#define REPORT_INTERVAL 300
